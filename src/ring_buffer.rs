@@ -1,6 +1,6 @@
-use std::{fmt::Debug, num::NonZero};
+use std::{fmt::Debug, num::NonZero, ops::{Index, IndexMut}};
 
-use crate::error::{EmptyCollectionError, FullCollectionError};
+use crate::{error::{EmptyCollectionError, FullCollectionError}};
 
 pub struct RingBuffer<T, const SIZE: usize> {
     head: usize,
@@ -156,6 +156,11 @@ impl<T, const SIZE: usize> RingBuffer<T, SIZE> {
         -> Result<usize, ()> {
         todo!("Iterate and take all into this ring buffer. Also create an error.")
     }
+
+    /// TODO: Make description, also check how to define this life time
+    pub fn into_cyclic_iter(&self) -> RingBufferCyclicIterator<'_, T, SIZE> {
+        RingBufferCyclicIterator { buffer: self, index: 0 }
+    }
 }
 
 impl<T> Default for RingBuffer<T, 16> {
@@ -196,13 +201,44 @@ impl<T, const SIZE: usize> From<[T; SIZE]> for RingBuffer<T, SIZE> {
     }
 }
 
-// impl<T, const SIZE: usize> IntoIterator for RingBuffer<T, SIZE> {
-//     type Item = T;
+impl<T, const SIZE: usize> Index<usize> for RingBuffer<T, SIZE> {
+    type Output = T;
 
-       // TODO: Create a ring_buffer::IntoIter type
-//     type IntoIter;
+    fn index(&self, index: usize) -> &Self::Output {
+        if index >= self.len() {
+            panic!("Index out of bounds");
+        }
+        let actual_index: usize = (self.head + index) % SIZE;
+        // SAFETY: We unwrap here as this value shouldn't be None
+        self.buffer[actual_index].as_ref().unwrap()
+    }
+}
 
-//     fn into_iter(self) -> Self::IntoIter {
-//         todo!()
-//     }
-// }
+impl<T, const SIZE: usize> IndexMut<usize> for RingBuffer<T, SIZE> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        if index >= self.len() {
+            panic!("Index out of bounds");
+        }
+        let actual_index: usize = (self.head + index) % SIZE;
+        self.buffer[actual_index].as_mut().unwrap()
+    }
+}
+
+pub struct RingBufferCyclicIterator<'a, T, const SIZE: usize>{
+    buffer: &'a RingBuffer<T, SIZE>,
+    index: usize
+}
+
+impl<'a, T, const SIZE: usize> Iterator for RingBufferCyclicIterator<'a, T, SIZE> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.buffer.is_empty() {
+            return None;
+        }
+        self.index = (self.index + 1) % SIZE;
+        let val = Some(&self.buffer[self.index]);
+        self.index += 1;
+        val
+    }
+}
